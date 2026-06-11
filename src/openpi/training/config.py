@@ -627,14 +627,29 @@ _CONFIGS = [
             use_delta_joint_actions=True,
         ),
         weight_loader=weight_loaders.CheckpointWeightLoader("gs://openpi-assets/checkpoints/pi05_base/params"),
-        batch_size=32,
-        num_train_steps=30_000,
+        batch_size=20,
+        num_train_steps=40_000,
         log_interval=50,
-        save_interval=15_000 ,
+        save_interval=20_000 ,
         wandb_enabled=True,
         num_workers=10,
         fsdp_devices=1,
         freeze_filter=nnx.Nothing,
+        seed=1000,
+        lr_schedule=_optimizer.CosineDecaySchedule(
+            warmup_steps=1200,
+            peak_lr=2.5e-5,
+            decay_steps=40_000,
+            decay_lr=2.5e-6,
+        ),
+        optimizer=_optimizer.AdamW(
+          b1=0.9,
+          b2=0.95,
+          eps=1e-8,
+          weight_decay=0.01, # openpi is 1e-10
+          clip_gradient_norm=1.0,
+        ),
+
         # freeze_filter=pi0_config.Pi0Config(
         #     paligemma_variant="gemma_2b",
         #     action_expert_variant="gemma_300m_lora"
