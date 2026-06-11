@@ -17,6 +17,7 @@ import openpi.models.model as _model
 import openpi.models.pi0_config as pi0_config
 import openpi.models.pi0_fast as pi0_fast
 import openpi.models.tokenizer as _tokenizer
+import openpi.policies.rby1_policy as rby1_policy
 import openpi.policies.aloha_policy as aloha_policy
 import openpi.policies.droid_policy as droid_policy
 import openpi.policies.libero_policy as libero_policy
@@ -232,10 +233,6 @@ class LeRobotRBY1DataConfig(DataConfigFactory):
     use_delta_joint_actions: bool = True
     # If provided, will be injected into the input data if the "prompt" key is not present.
     default_prompt: str | None = None
-    # If true, this will convert the joint and gripper values from the standard Aloha space to
-    # the space used by the pi internal runtime which was used to train the base model. People who
-    # use standard Aloha data should set this to true.
-    adapt_to_pi: bool = True
 
     # Repack transforms.
     repack_transforms: tyro.conf.Suppress[_transforms.Group] = dataclasses.field(
@@ -243,13 +240,12 @@ class LeRobotRBY1DataConfig(DataConfigFactory):
             inputs=[
                 _transforms.RepackTransform(
                     {
-                        "images": {
-                            "cam_high": "observation.images.front",
-                            "cam_left_wrist": "observation.images.left",
-                            "cam_right_wrist": "observation.images.right",    
-                        },
-                        "state": "observation.state",
+                        "observation/front_image": "observation.images.front",
+                        "observation/left_image": "observation.images.left",
+                        "observation/right_image": "observation.images.right",    
+                        "observation/state": "observation.state",
                         "actions": "action",
+                        "prompt": "prompt"
                     }
                 )
             ]
@@ -261,11 +257,11 @@ class LeRobotRBY1DataConfig(DataConfigFactory):
     @override
     def create(self, assets_dirs: pathlib.Path, model_config: _model.BaseModelConfig) -> DataConfig:
         data_transforms = _transforms.Group(
-            inputs=[aloha_policy.AlohaInputs(adapt_to_pi=self.adapt_to_pi)],
-            outputs=[aloha_policy.AlohaOutputs(adapt_to_pi=self.adapt_to_pi)],
+            inputs=[rby1_policy.RBY1Inputs()],
+            outputs=[rby1_policy.RBY1Outputs()],
         )
         if self.use_delta_joint_actions:
-            delta_action_mask = _transforms.make_bool_mask(6, -1, 6, -1)
+            delta_action_mask = _transforms.make_bool_mask(14, -2)
             data_transforms = data_transforms.push(
                 inputs=[_transforms.DeltaActions(delta_action_mask)],
                 outputs=[_transforms.AbsoluteActions(delta_action_mask)],
@@ -616,7 +612,9 @@ class TrainConfig:
 # Use `get_config` if you need to get a config by name in your code.
 _CONFIGS = [
     
-    # RBY1
+
+    
+    # RBY1 Training
     TrainConfig(
         name="pi05_rby1_icra_test",
         model=pi0_config.Pi0Config(
@@ -625,8 +623,24 @@ _CONFIGS = [
         ),
         data=LeRobotRBY1DataConfig(
             repo_id="icra_0526",
+            base_config=DataConfig(prompt_from_task=True),
             use_delta_joint_actions=True,
-        )
+        ),
+        weight_loader=weight_loaders.CheckpointWeightLoader("gs://openpi-assets/checkpoints/pi05_base/params"),
+        batch_size=32,
+        num_train_steps=30_000,
+        log_interval=50,
+        save_interval=15_000 ,
+        wandb_enabled=True,
+        num_workers=10,
+        fsdp_devices=1,
+        freeze_filter=nnx.Nothing,
+        # freeze_filter=pi0_config.Pi0Config(
+        #     paligemma_variant="gemma_2b",
+        #     action_expert_variant="gemma_300m_lora"
+        # ).get_freeze_filter()
+
+
 
     ),
     
