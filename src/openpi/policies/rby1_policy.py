@@ -8,6 +8,15 @@ from openpi import transforms
 
 ACTION_DIM = 16
 
+def make_rby1_example() -> dict:
+    return {
+        "observation/front_image": np.random.randint(256, size=(224, 224, 3), dtype=np.uint8),
+        "observation/left_image": np.random.randint(256, size=(224, 224, 3), dtype=np.uint8),
+        "observation/right_image": np.random.randint(256, size=(224, 224, 3), dtype=np.uint8),
+        "observation/state": np.random.rand(ACTION_DIM).astype(np.float32),
+        "prompt": "do something",
+    }
+
 
 def _parse_image(image) -> np.ndarray:
     image = np.asarray(image)
