@@ -17,6 +17,7 @@ import openpi.models.model as _model
 import openpi.models.pi0_config as pi0_config
 import openpi.models.pi0_fast as pi0_fast
 import openpi.models.tokenizer as _tokenizer
+import openpi.policies.rby1_policy as rby1_policy
 import openpi.policies.aloha_policy as aloha_policy
 import openpi.policies.droid_policy as droid_policy
 import openpi.policies.libero_policy as libero_policy
@@ -223,6 +224,57 @@ class SimpleDataConfig(DataConfigFactory):
             model_transforms=self.model_transforms(model_config),
         )
 
+
+@dataclasses.dataclass(frozen=True)
+class LeRobotRBY1DataConfig(DataConfigFactory):
+    # If true, will convert joint dimensions to deltas with respect to the current state before passing to the model.
+    # Gripper dimensions will remain in absolute values.
+    use_delta_joint_actions: bool = True
+    # If provided, will be injected into the input data if the "prompt" key is not present.
+    default_prompt: str | None = None
+
+    # Repack transforms.
+    repack_transforms: tyro.conf.Suppress[_transforms.Group] = dataclasses.field(
+        default=_transforms.Group(
+            inputs=[
+                _transforms.RepackTransform(
+                    {
+                        "observation/front_image": "observation.images.front",
+                        "observation/left_image": "observation.images.left",
+                        "observation/right_image": "observation.images.right",    
+                        "observation/state": "observation.state",
+                        "actions": "action",
+                        "prompt": "prompt"
+                    }
+                )
+            ]
+        )
+    )
+    # Action keys that will be used to read the action sequence from the dataset.
+    action_sequence_keys: Sequence[str] = ("action",)
+
+    @override
+    def create(self, assets_dirs: pathlib.Path, model_config: _model.BaseModelConfig) -> DataConfig:
+        data_transforms = _transforms.Group(
+            inputs=[rby1_policy.RBY1Inputs()],
+            outputs=[rby1_policy.RBY1Outputs()],
+        )
+        if self.use_delta_joint_actions:
+            delta_action_mask = _transforms.make_bool_mask(14, -2)
+            data_transforms = data_transforms.push(
+                inputs=[_transforms.DeltaActions(delta_action_mask)],
+                outputs=[_transforms.AbsoluteActions(delta_action_mask)],
+            )
+
+        model_transforms = ModelTransformFactory(default_prompt=self.default_prompt)(model_config)
+
+        return dataclasses.replace(
+            self.create_base_config(assets_dirs, model_config),
+            repack_transforms=self.repack_transforms,
+            data_transforms=data_transforms,
+            model_transforms=model_transforms,
+            action_sequence_keys=self.action_sequence_keys,
+        )
 
 @dataclasses.dataclass(frozen=True)
 class LeRobotAlohaDataConfig(DataConfigFactory):
@@ -549,9 +601,55 @@ class TrainConfig:
 
 # Use `get_config` if you need to get a config by name in your code.
 _CONFIGS = [
+
+    # RBY1 Training
+    TrainConfig(
+        name="pi05_rby1_icra_test",
+        model=pi0_config.Pi0Config(
+            pi05=True,
+            action_horizon=40,
+        ),
+        data=LeRobotRBY1DataConfig(
+            repo_id="icra_0526",
+            base_config=DataConfig(prompt_from_task=True),
+            use_delta_joint_actions=True,
+        ),
+        weight_loader=weight_loaders.CheckpointWeightLoader("gs://openpi-assets/checkpoints/pi05_base/params"),
+        batch_size=20,
+        num_train_steps=40_000,
+        log_interval=50,
+        save_interval=20_000 ,
+        wandb_enabled=True,
+        num_workers=10,
+        fsdp_devices=1,
+        freeze_filter=nnx.Nothing,
+        seed=1000,
+        lr_schedule=_optimizer.CosineDecaySchedule(
+            warmup_steps=1200,
+            peak_lr=2.5e-5,
+            decay_steps=40_000,
+            decay_lr=2.5e-6,
+        ),
+        optimizer=_optimizer.AdamW(
+          b1=0.9,
+          b2=0.95,
+          eps=1e-8,
+          weight_decay=0.01, # openpi is 1e-10
+          clip_gradient_norm=1.0,
+        ),
+
+        # freeze_filter=pi0_config.Pi0Config(
+        #     paligemma_variant="gemma_2b",
+        #     action_expert_variant="gemma_300m_lora"
+        # ).get_freeze_filter()
+
+
+
+    ),
     #
     # Inference Aloha configs.
     #
+    
     TrainConfig(
         name="pi0_aloha",
         model=pi0_config.Pi0Config(),
