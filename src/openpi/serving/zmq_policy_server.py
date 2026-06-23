@@ -1,15 +1,15 @@
 from dataclasses import dataclass
 import io
+import time
 from typing import Any
 
 import msgpack
 import numpy as np
 import tyro
 import zmq
-import time
 
-from openpi.training import config as _config
 from openpi.policies import policy_config
+from openpi.training import config as _config
 
 """
 Example command :
@@ -119,7 +119,6 @@ class Pi05ZMQPolicyServer:
                     print(f"[get_action] infer_time={infer_time*1000:.2f} ms")
                     print(f"action_len={action_len}")
                     print(f"action_dim={action_dim}")
-
 
                     response = result
 

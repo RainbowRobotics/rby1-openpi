@@ -1,23 +1,16 @@
-from PIL import Image
-import numpy as np
-
-import jax.numpy as jnp
 import flax.nnx as nnx
-
+import jax.numpy as jnp
+import numpy as np
+from PIL import Image
 from transformers import AutoTokenizer
 
-from openpi.training import config as train_config
 from openpi.models.pi0 import Pi0
+from openpi.training import config as train_config
 
-
-PROMPT = (
-    "Task: pick up the puppy in the middle.\n"
-    "What should the robot do next?\n"
-    "Subtask:"
-)
+PROMPT = "Task: pick up the puppy in the middle.\n" "What should the robot do next?\n" "Subtask:"
 
 IMAGE_PATH = "/home/ubuntu/sylee/openpi/scripts/puppy.jpg"
-CONFIG_NAME = "pi05_libero" # debug_pi05 , pi05_libero
+CONFIG_NAME = "pi05_libero"  # debug_pi05 , pi05_libero
 MAX_PROMPT_LEN = 200
 
 
@@ -31,7 +24,6 @@ def generate_text_recompute(model, obs, tokenizer, max_new_tokens=30):
 
     generated = []
     prompt_start, prompt_end = get_prompt_span(prefix_tokens, obs)
-
 
     for step in range(max_new_tokens):
         if generated:
@@ -70,21 +62,17 @@ def generate_text_recompute(model, obs, tokenizer, max_new_tokens=30):
             last_idx = prompt_end - 1
             hidden = out[:, last_idx, :]
 
-
         logits = vocab_logits(model, hidden)
 
-
-
         ####
-
 
         topk = jnp.argsort(logits[0])[-10:][::-1]
 
         print(f"\nSTEP {step}")
         print("TOP10")
 
-        for idx in topk:
-            idx = int(idx)
+        for token_idx in topk:
+            idx = int(token_idx)
             print(
                 idx,
                 repr(tokenizer.decode([idx])),
@@ -97,9 +85,7 @@ def generate_text_recompute(model, obs, tokenizer, max_new_tokens=30):
 
         generated.append(next_id)
 
-
         ####
-
 
         # next_id = int(jnp.argmax(logits[0]))
         # generated.append(next_id)
@@ -113,9 +99,7 @@ def generate_text_recompute(model, obs, tokenizer, max_new_tokens=30):
     return generated, text
 
 
-
 def make_attn_mask(input_mask, mask_ar):
-
     mask_ar = jnp.broadcast_to(mask_ar, input_mask.shape)
     cumsum = jnp.cumsum(mask_ar, axis=1)
 
@@ -126,20 +110,13 @@ def make_attn_mask(input_mask, mask_ar):
 
 
 def make_obs_with_image(obs, image_path):
-
     image = Image.open(image_path).convert("RGB").resize((224, 224))
     image = jnp.array(np.asarray(image), dtype=jnp.float32) / 255.0
 
-    return obs.replace(
-        images={
-            name: image[None, ...]
-            for name in obs.images.keys()
-        }
-    )
+    return obs.replace(images={name: image[None, ...] for name in obs.images})
 
 
 def set_prompt(obs, tokenizer, prompt):
-
     encoded = tokenizer(
         prompt,
         max_length=MAX_PROMPT_LEN,
@@ -150,9 +127,7 @@ def set_prompt(obs, tokenizer, prompt):
 
     return obs.replace(
         tokenized_prompt=jnp.array(encoded["input_ids"]),
-        tokenized_prompt_mask=jnp.array(
-            encoded["attention_mask"]
-        ).astype(bool),
+        tokenized_prompt_mask=jnp.array(encoded["attention_mask"]).astype(bool),
     )
 
 
@@ -165,11 +140,9 @@ def get_prompt_span(prefix_tokens, obs):
 
     return prompt_start, prompt_end
 
+
 def run_prefix(model, obs):
-
-
     prefix_tokens, prefix_mask, prefix_ar_mask = model.embed_prefix(obs)
-
 
     positions = jnp.cumsum(prefix_mask, axis=1) - 1
 
@@ -195,30 +168,25 @@ def print_topk_next_token(model, tokenizer, hidden, k=20):
     topk = jnp.argsort(logits[0])[-k:][::-1]
 
     print("\nTOP-K NEXT TOKENS")
-    for idx in topk:
-        idx = int(idx)
+    for token_idx in topk:
+        idx = int(token_idx)
         print(idx, repr(tokenizer.decode([idx])), float(logits[0, idx]))
 
 
 def decode_prompt_hidden(model, tokenizer, prefix_out, obs):
-
-
-
     prompt_len = int(jnp.sum(obs.tokenized_prompt_mask[0]))
 
-    prompt_start = (prefix_out.shape[1] - MAX_PROMPT_LEN)
-    prompt_end = (prompt_start + prompt_len)
+    prompt_start = prefix_out.shape[1] - MAX_PROMPT_LEN
+    prompt_end = prompt_start + prompt_len
 
     print("prompt_start:", prompt_start)
-    print("prompt_end:",prompt_end)
+    print("prompt_end:", prompt_end)
 
-    prompt_hidden = prefix_out[:,prompt_start:prompt_end,:]
+    prompt_hidden = prefix_out[:, prompt_start:prompt_end, :]
 
     print("prompt_hidden:", prompt_hidden.shape)
 
-    embedding_table = model.PaliGemma.llm.embedder[
-        "input_embedding"
-    ].value
+    embedding_table = model.PaliGemma.llm.embedder["input_embedding"].value
 
     logits = jnp.einsum(
         "btd,vd->btv",
@@ -236,12 +204,7 @@ def decode_prompt_hidden(model, tokenizer, prefix_out, obs):
     print("PROMPT TOKENS")
     print(prompt_tokens)
 
-    print(
-        tokenizer.decode(
-            [int(x) for x in prompt_tokens]
-        )
-    )
-
+    print(tokenizer.decode([int(x) for x in prompt_tokens]))
 
     print("decoded token ids:")
     print(tokens[0, :50])
@@ -254,13 +217,10 @@ def decode_prompt_hidden(model, tokenizer, prefix_out, obs):
     last_hidden = prompt_hidden[:, -1, :]
     print_topk_next_token(model, tokenizer, last_hidden, k=20)
 
-
-
     return tokens
 
 
 def compare_image_effect(model, obs_a, obs_b):
-
     prefix_out_a = run_prefix(model, obs_a)
     prefix_out_b = run_prefix(model, obs_b)
 
@@ -279,11 +239,7 @@ def compare_image_effect(model, obs_a, obs_b):
     max_abs_diff = jnp.max(jnp.abs(diff))
 
     cosine = jnp.sum(prompt_a * prompt_b, axis=-1)
-    cosine = cosine / (
-        jnp.linalg.norm(prompt_a, axis=-1)
-        * jnp.linalg.norm(prompt_b, axis=-1)
-        + 1e-8
-    )
+    cosine = cosine / (jnp.linalg.norm(prompt_a, axis=-1) * jnp.linalg.norm(prompt_b, axis=-1) + 1e-8)
 
     print("mean abs diff:", mean_abs_diff)
     print("max abs diff:", max_abs_diff)
@@ -293,13 +249,12 @@ def compare_image_effect(model, obs_a, obs_b):
 
 
 def main():
-
-    # libero config 불러옴 
+    # libero config 불러옴
     cfg = train_config.get_config(CONFIG_NAME)
 
     rngs = nnx.Rngs(42)
 
-    #pi05 모델 생성
+    # pi05 모델 생성
     model = Pi0(cfg.model, rngs)
 
     # 파라미터 불러옴
@@ -312,17 +267,10 @@ def main():
 
     nnx.update(model, loaded_params)
 
-    embedding_table = model.PaliGemma.llm.embedder[
-        "input_embedding"
-    ].value
-
-
     print("Weights loaded.")
 
     # 팔리젬마 토크나이저 불러옴
-    tokenizer = AutoTokenizer.from_pretrained(
-        "google/paligemma-3b-pt-224"
-    )
+    tokenizer = AutoTokenizer.from_pretrained("google/paligemma-3b-pt-224")
 
     # 가짜 데이터 생성 + 원하는 프롬프트 설정
     base_obs = cfg.model.fake_obs()
@@ -337,22 +285,15 @@ def main():
     print("\n" + "=" * 80)
     print("Experiment 1: Decode prompt hidden")
 
-
     # 프롬프트 VLM output 디코딩
     prefix_out = run_prefix(model, puppy_obs)
     decode_prompt_hidden(model, tokenizer, prefix_out, puppy_obs)
 
-
-
-
-
     print("\n" + "=" * 80)
     print("Experiment 2: Image effect on prompt hidden")
 
-
     # 이미지가 프롬프트 히든에 미치는 영향 비교
     compare_image_effect(model, base_obs, puppy_obs)
-
 
     print("\n" + "=" * 80)
     print("Experiment 3: Autoregressive subtask generation")
@@ -364,10 +305,7 @@ def main():
         max_new_tokens=30,
     )
 
-
     print("\n" + "=" * 80)
-
-
 
 
 if __name__ == "__main__":

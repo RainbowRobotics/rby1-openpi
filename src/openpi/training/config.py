@@ -17,10 +17,10 @@ import openpi.models.model as _model
 import openpi.models.pi0_config as pi0_config
 import openpi.models.pi0_fast as pi0_fast
 import openpi.models.tokenizer as _tokenizer
-import openpi.policies.rby1_policy as rby1_policy
 import openpi.policies.aloha_policy as aloha_policy
 import openpi.policies.droid_policy as droid_policy
 import openpi.policies.libero_policy as libero_policy
+import openpi.policies.rby1_policy as rby1_policy
 import openpi.shared.download as _download
 import openpi.shared.normalize as _normalize
 import openpi.training.droid_rlds_dataset as droid_rlds_dataset
@@ -225,6 +225,7 @@ class SimpleDataConfig(DataConfigFactory):
             model_transforms=self.model_transforms(model_config),
         )
 
+
 # RBY1
 @dataclasses.dataclass(frozen=True)
 class LeRobotRBY1DataConfig(DataConfigFactory):
@@ -242,10 +243,10 @@ class LeRobotRBY1DataConfig(DataConfigFactory):
                     {
                         "observation/front_image": "observation.images.front",
                         "observation/left_image": "observation.images.left",
-                        "observation/right_image": "observation.images.right",    
+                        "observation/right_image": "observation.images.right",
                         "observation/state": "observation.state",
                         "actions": "action",
-                        "prompt": "prompt"
+                        "prompt": "prompt",
                     }
                 )
             ]
@@ -611,9 +612,6 @@ class TrainConfig:
 
 # Use `get_config` if you need to get a config by name in your code.
 _CONFIGS = [
-    
-
-    
     # RBY1 Training
     TrainConfig(
         name="pi05_rby1_icra_test",
@@ -630,7 +628,7 @@ _CONFIGS = [
         batch_size=32,
         num_train_steps=40_000,
         log_interval=50,
-        save_interval=20_000 ,
+        save_interval=20_000,
         wandb_enabled=True,
         num_workers=10,
         fsdp_devices=1,
@@ -643,19 +641,17 @@ _CONFIGS = [
             decay_lr=2.5e-6,
         ),
         optimizer=_optimizer.AdamW(
-          b1=0.9,
-          b2=0.95,
-          eps=1e-8,
-          weight_decay=0.01, # openpi is 1e-10
-          clip_gradient_norm=1.0,
+            b1=0.9,
+            b2=0.95,
+            eps=1e-8,
+            weight_decay=0.01,  # openpi is 1e-10
+            clip_gradient_norm=1.0,
         ),
-
         # freeze_filter=pi0_config.Pi0Config(
         #     paligemma_variant="gemma_2b",
         #     action_expert_variant="gemma_300m_lora"
         # ).get_freeze_filter()
     ),
-
     TrainConfig(
         name="pi05_rby1_flower_0618_const",
         model=pi0_config.Pi0Config(
@@ -671,13 +667,12 @@ _CONFIGS = [
         batch_size=128,
         num_train_steps=80_000,
         log_interval=50,
-        save_interval=40_000 ,
+        save_interval=40_000,
         wandb_enabled=True,
         num_workers=20,
         fsdp_devices=1,
         freeze_filter=nnx.Nothing,
         seed=1000,
-        
         optimizer=_optimizer.AdamW(clip_gradient_norm=1.0),
         lr_schedule=_optimizer.CosineDecaySchedule(
             warmup_steps=8_000,
@@ -686,13 +681,11 @@ _CONFIGS = [
             decay_lr=5e-5,
         ),
         keep_period=40_000,
-
         # freeze_filter=pi0_config.Pi0Config(
         #     paligemma_variant="gemma_2b",
         #     action_expert_variant="gemma_300m_lora"
         # ).get_freeze_filter()
     ),
-
     TrainConfig(
         name="pi05_rby1_flower_0618",
         model=pi0_config.Pi0Config(
@@ -708,7 +701,7 @@ _CONFIGS = [
         batch_size=128,
         num_train_steps=80_000,
         log_interval=50,
-        save_interval=40_000 ,
+        save_interval=40_000,
         wandb_enabled=True,
         num_workers=20,
         fsdp_devices=1,
@@ -721,20 +714,17 @@ _CONFIGS = [
             decay_lr=2.5e-6,
         ),
         optimizer=_optimizer.AdamW(
-          b1=0.9,
-          b2=0.95,
-          eps=1e-8,
-          weight_decay=0.01, # openpi is 1e-10
-          clip_gradient_norm=1.0,
+            b1=0.9,
+            b2=0.95,
+            eps=1e-8,
+            weight_decay=0.01,  # openpi is 1e-10
+            clip_gradient_norm=1.0,
         ),
-
         # freeze_filter=pi0_config.Pi0Config(
         #     paligemma_variant="gemma_2b",
         #     action_expert_variant="gemma_300m_lora"
         # ).get_freeze_filter()
     ),
-
-
     TrainConfig(
         name="pi05_rby1_flower_continue",
         model=pi0_config.Pi0Config(
@@ -746,11 +736,13 @@ _CONFIGS = [
             base_config=DataConfig(prompt_from_task=True),
             use_delta_joint_actions=True,
         ),
-        weight_loader=weight_loaders.CheckpointWeightLoader("/home/ubuntu/kgs/pi05_rb/checkpoints/pi05_rby1_icra_test/openpi_0526_delta_/39999/params"),
+        weight_loader=weight_loaders.CheckpointWeightLoader(
+            "/home/ubuntu/kgs/pi05_rb/checkpoints/pi05_rby1_icra_test/openpi_0526_delta_/39999/params"
+        ),
         batch_size=128,
         num_train_steps=20_000,
         log_interval=50,
-        save_interval=10_000 ,
+        save_interval=10_000,
         wandb_enabled=True,
         num_workers=10,
         fsdp_devices=1,
@@ -763,19 +755,17 @@ _CONFIGS = [
             decay_lr=2.5e-6,
         ),
         optimizer=_optimizer.AdamW(
-          b1=0.9,
-          b2=0.95,
-          eps=1e-8,
-          weight_decay=0.01, # openpi is 1e-10
-          clip_gradient_norm=1.0,
+            b1=0.9,
+            b2=0.95,
+            eps=1e-8,
+            weight_decay=0.01,  # openpi is 1e-10
+            clip_gradient_norm=1.0,
         ),
-
         # freeze_filter=pi0_config.Pi0Config(
         #     paligemma_variant="gemma_2b",
         #     action_expert_variant="gemma_300m_lora"
         # ).get_freeze_filter()
     ),
-    
     #
     # Inference Aloha configs.
     #

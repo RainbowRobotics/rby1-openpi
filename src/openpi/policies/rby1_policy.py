@@ -5,8 +5,8 @@ import numpy as np
 
 from openpi import transforms
 
-
 ACTION_DIM = 16
+
 
 def make_rby1_example() -> dict:
     return {
@@ -72,4 +72,3 @@ class RBY1Outputs(transforms.DataTransformFn):
 
     def __call__(self, data: dict) -> dict:
         return {"actions": np.asarray(data["actions"][:, :ACTION_DIM])}
-    
