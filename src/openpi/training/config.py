@@ -627,7 +627,7 @@ _CONFIGS = [
             use_delta_joint_actions=True,
         ),
         weight_loader=weight_loaders.CheckpointWeightLoader("gs://openpi-assets/checkpoints/pi05_base/params"),
-        batch_size=20,
+        batch_size=32,
         num_train_steps=40_000,
         log_interval=50,
         save_interval=20_000 ,
@@ -654,9 +654,126 @@ _CONFIGS = [
         #     paligemma_variant="gemma_2b",
         #     action_expert_variant="gemma_300m_lora"
         # ).get_freeze_filter()
+    ),
+
+    TrainConfig(
+        name="pi05_rby1_flower_0618_const",
+        model=pi0_config.Pi0Config(
+            pi05=True,
+            action_horizon=40,
+        ),
+        data=LeRobotRBY1DataConfig(
+            repo_id="opening_ceremony_0618",
+            base_config=DataConfig(prompt_from_task=True),
+            use_delta_joint_actions=True,
+        ),
+        weight_loader=weight_loaders.CheckpointWeightLoader("gs://openpi-assets/checkpoints/pi05_base/params"),
+        batch_size=128,
+        num_train_steps=80_000,
+        log_interval=50,
+        save_interval=40_000 ,
+        wandb_enabled=True,
+        num_workers=20,
+        fsdp_devices=1,
+        freeze_filter=nnx.Nothing,
+        seed=1000,
+        
+        optimizer=_optimizer.AdamW(clip_gradient_norm=1.0),
+        lr_schedule=_optimizer.CosineDecaySchedule(
+            warmup_steps=8_000,
+            peak_lr=5e-5,
+            decay_steps=1_000_000,
+            decay_lr=5e-5,
+        ),
+        keep_period=40_000,
+
+        # freeze_filter=pi0_config.Pi0Config(
+        #     paligemma_variant="gemma_2b",
+        #     action_expert_variant="gemma_300m_lora"
+        # ).get_freeze_filter()
+    ),
+
+    TrainConfig(
+        name="pi05_rby1_flower_0618",
+        model=pi0_config.Pi0Config(
+            pi05=True,
+            action_horizon=40,
+        ),
+        data=LeRobotRBY1DataConfig(
+            repo_id="opening_ceremony_0618",
+            base_config=DataConfig(prompt_from_task=True),
+            use_delta_joint_actions=True,
+        ),
+        weight_loader=weight_loaders.CheckpointWeightLoader("gs://openpi-assets/checkpoints/pi05_base/params"),
+        batch_size=128,
+        num_train_steps=80_000,
+        log_interval=50,
+        save_interval=40_000 ,
+        wandb_enabled=True,
+        num_workers=20,
+        fsdp_devices=1,
+        freeze_filter=nnx.Nothing,
+        seed=1000,
+        lr_schedule=_optimizer.CosineDecaySchedule(
+            warmup_steps=2400,
+            peak_lr=2.5e-5,
+            decay_steps=80_000,
+            decay_lr=2.5e-6,
+        ),
+        optimizer=_optimizer.AdamW(
+          b1=0.9,
+          b2=0.95,
+          eps=1e-8,
+          weight_decay=0.01, # openpi is 1e-10
+          clip_gradient_norm=1.0,
+        ),
+
+        # freeze_filter=pi0_config.Pi0Config(
+        #     paligemma_variant="gemma_2b",
+        #     action_expert_variant="gemma_300m_lora"
+        # ).get_freeze_filter()
+    ),
 
 
+    TrainConfig(
+        name="pi05_rby1_flower_continue",
+        model=pi0_config.Pi0Config(
+            pi05=True,
+            action_horizon=40,
+        ),
+        data=LeRobotRBY1DataConfig(
+            repo_id="opening_ceremony_0617",
+            base_config=DataConfig(prompt_from_task=True),
+            use_delta_joint_actions=True,
+        ),
+        weight_loader=weight_loaders.CheckpointWeightLoader("/home/ubuntu/kgs/pi05_rb/checkpoints/pi05_rby1_icra_test/openpi_0526_delta_/39999/params"),
+        batch_size=128,
+        num_train_steps=20_000,
+        log_interval=50,
+        save_interval=10_000 ,
+        wandb_enabled=True,
+        num_workers=10,
+        fsdp_devices=1,
+        freeze_filter=nnx.Nothing,
+        seed=1000,
+        lr_schedule=_optimizer.CosineDecaySchedule(
+            warmup_steps=600,
+            peak_lr=2.5e-5,
+            decay_steps=20_000,
+            decay_lr=2.5e-6,
+        ),
+        optimizer=_optimizer.AdamW(
+          b1=0.9,
+          b2=0.95,
+          eps=1e-8,
+          weight_decay=0.01, # openpi is 1e-10
+          clip_gradient_norm=1.0,
+        ),
 
+        # freeze_filter=pi0_config.Pi0Config(
+        #     paligemma_variant="gemma_2b",
+        #     action_expert_variant="gemma_300m_lora"
+        # ).get_freeze_filter()
     ),
     
     #
