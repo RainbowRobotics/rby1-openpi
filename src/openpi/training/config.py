@@ -20,6 +20,7 @@ import openpi.models.tokenizer as _tokenizer
 import openpi.policies.aloha_policy as aloha_policy
 import openpi.policies.droid_policy as droid_policy
 import openpi.policies.libero_policy as libero_policy
+import openpi.policies.rby1_policy as rby1_policy
 import openpi.shared.download as _download
 import openpi.shared.normalize as _normalize
 import openpi.training.droid_rlds_dataset as droid_rlds_dataset
@@ -222,6 +223,59 @@ class SimpleDataConfig(DataConfigFactory):
             self.create_base_config(assets_dirs, model_config),
             data_transforms=self.data_transforms(model_config),
             model_transforms=self.model_transforms(model_config),
+        )
+
+
+# RBY1
+@dataclasses.dataclass(frozen=True)
+class LeRobotRBY1DataConfig(DataConfigFactory):
+    # If true, will convert joint dimensions to deltas with respect to the current state before passing to the model.
+    # Gripper dimensions will remain in absolute values.
+    use_delta_joint_actions: bool = True
+    # If provided, will be injected into the input data if the "prompt" key is not present.
+    default_prompt: str | None = None
+
+    # Repack transforms.
+    repack_transforms: tyro.conf.Suppress[_transforms.Group] = dataclasses.field(
+        default=_transforms.Group(
+            inputs=[
+                _transforms.RepackTransform(
+                    {
+                        "observation/front_image": "observation.images.front",
+                        "observation/left_image": "observation.images.left",
+                        "observation/right_image": "observation.images.right",
+                        "observation/state": "observation.state",
+                        "actions": "action",
+                        "prompt": "prompt",
+                    }
+                )
+            ]
+        )
+    )
+    # Action keys that will be used to read the action sequence from the dataset.
+    action_sequence_keys: Sequence[str] = ("action",)
+
+    @override
+    def create(self, assets_dirs: pathlib.Path, model_config: _model.BaseModelConfig) -> DataConfig:
+        data_transforms = _transforms.Group(
+            inputs=[rby1_policy.RBY1Inputs()],
+            outputs=[rby1_policy.RBY1Outputs()],
+        )
+        if self.use_delta_joint_actions:
+            delta_action_mask = _transforms.make_bool_mask(14, -2)
+            data_transforms = data_transforms.push(
+                inputs=[_transforms.DeltaActions(delta_action_mask)],
+                outputs=[_transforms.AbsoluteActions(delta_action_mask)],
+            )
+
+        model_transforms = ModelTransformFactory(default_prompt=self.default_prompt)(model_config)
+
+        return dataclasses.replace(
+            self.create_base_config(assets_dirs, model_config),
+            repack_transforms=self.repack_transforms,
+            data_transforms=data_transforms,
+            model_transforms=model_transforms,
+            action_sequence_keys=self.action_sequence_keys,
         )
 
 
@@ -558,6 +612,40 @@ class TrainConfig:
 
 # Use `get_config` if you need to get a config by name in your code.
 _CONFIGS = [
+    # RBY1 Training
+    TrainConfig(
+        name="pi05_rby1_sample",
+        model=pi0_config.Pi0Config(
+            pi05=True,
+            action_horizon=40,
+        ),
+        data=LeRobotRBY1DataConfig(
+            repo_id="your_dataset_repo_id",
+            base_config=DataConfig(prompt_from_task=True),
+            use_delta_joint_actions=True,
+        ),
+        weight_loader=weight_loaders.CheckpointWeightLoader("gs://openpi-assets/checkpoints/pi05_base/params"),
+        batch_size=32,
+        num_train_steps=50_000,
+        log_interval=100,
+        save_interval=5_000,
+        fsdp_devices=1,
+        freeze_filter=nnx.Nothing,
+        seed=1000,
+        lr_schedule=_optimizer.CosineDecaySchedule(
+            warmup_steps=10_000,
+            peak_lr=5e-5,
+            decay_steps=1_000_000,
+            decay_lr=5e-5,
+        ),
+        optimizer=_optimizer.AdamW(
+            b1=0.9,
+            b2=0.95,
+            eps=1e-8,
+            weight_decay=1e-10,
+            clip_gradient_norm=1.0,
+        ),
+    ),
     #
     # Inference Aloha configs.
     #
