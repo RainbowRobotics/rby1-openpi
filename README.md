@@ -31,11 +31,32 @@ The RBY1 integration configures RBY1-specific data repacking, input/output trans
 | Data and training configuration | `src/openpi/training/config.py` |
 | ZMQ policy server | `src/openpi/serving/zmq_policy_server.py` |
 
+## Dataset Preparation
+
+For instructions on creating RBY1 datasets, refer to the `rby1-lerobot` repository.
+
+```text
+https://github.com/RainbowRobotics/rby1-lerobot
+```
+
+## Installation
+
+This repository uses `uv` for Python dependency management. First, follow the `uv` installation instructions and install `uv`.
+
+After installing `uv`, run the following commands from the OpenPI repository root to set up the environment:
+
+```bash
+GIT_LFS_SKIP_SMUDGE=1 uv sync
+GIT_LFS_SKIP_SMUDGE=1 uv pip install -e .
+```
+
+These commands configure the OpenPI runtime environment and install the current repository in editable mode.
+
 ## Training Example
 
 RBY1 training settings are registered in `TrainConfig`.
 
-For example, if you use the `pi05_rby1_sample` config, first compute normalization statistics for the training dataset:
+For example, if you use the [`pi05_rby1_sample`](https://github.com/RainbowRobotics/rby1-openpi/blob/0b4a2ce3df170c8691c092690bcae9521b8c6275/src/openpi/training/config.py#L617) config, first compute normalization statistics for the training dataset:
 
 ```bash
 uv run scripts/compute_norm_stats.py --config-name pi05_rby1_sample
