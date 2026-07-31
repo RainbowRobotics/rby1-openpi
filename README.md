@@ -52,29 +52,96 @@ GIT_LFS_SKIP_SMUDGE=1 uv pip install -e .
 
 These commands configure the OpenPI runtime environment and install the current repository in editable mode.
 
-## Training Example
+## Training
 
-RBY1 training settings are registered in `TrainConfig`.
+### 1. Convert the dataset
 
-For example, if you use the [`pi05_rby1_sample`](https://github.com/RainbowRobotics/rby1-openpi/blob/0b4a2ce3df170c8691c092690bcae9521b8c6275/src/openpi/training/config.py#L617) config, first compute normalization statistics for the training dataset:
+Convert your dataset from **LeRobot v3** to **LeRobot v2**.
+
+Reference repository: [`lerobot_conversion`](https://github.com/RainbowRobotics/lerobot_conversion)
+
+---
+
+### 2. Create a training configuration
+
+Register your own config in `_CONFIGS =` inside [src/openpi/training/config.py](https://github.com/RainbowRobotics/rby1-openpi/blob/0b4a2ce3df170c8691c092690bcae9521b8c6275/src/openpi/training/config.py#L617) 
+
+For example:
+
+```python
+TrainConfig(
+        name="pi05_rby1_your_config_name",
+        model=pi0_config.Pi0Config(
+            pi05=True,
+            action_horizon=40,
+        ),
+        data=LeRobotRBY1DataConfig(
+            repo_id="your_dataset_repo_id",
+            base_config=DataConfig(prompt_from_task=True),
+            use_delta_joint_actions=True,
+        ),
+        weight_loader=weight_loaders.CheckpointWeightLoader("gs://openpi-assets/checkpoints/pi05_base/params"),
+        batch_size=32,
+        num_train_steps=50_000,
+        log_interval=100,
+        save_interval=5_000,
+        fsdp_devices=1,
+        freeze_filter=nnx.Nothing,
+        seed=1000,
+        ),
+    ),
+
+```
+Replace `your_dataset_repo_id` with your converted LeRobot v2 dataset (e.g. rainbowrobotics/my_dataset_v2).
+
+---
+
+### 3. Compute dataset normalization statistics
+
+Before training, compute the normalization statistics for your dataset:
 
 ```bash
-uv run scripts/compute_norm_stats.py --config-name pi05_rby1_sample
+uv run scripts/compute_norm_stats.py --config-name pi05_rby1_your_config_name
 ```
 
-Then start training with:
+---
+
+### 4. Start training
 
 ```bash
-XLA_PYTHON_CLIENT_MEM_FRACTION=0.9 uv run scripts/train.py pi05_rby1_sample \
+XLA_PYTHON_CLIENT_MEM_FRACTION=0.9 \
+uv run scripts/train.py pi05_rby1_your_config_name \
   --exp-name=my_experiment \
   --overwrite
 ```
 
-The `--overwrite` option is used when rerunning training with the same experiment name and replacing the existing checkpoint.
+#### Options
 
-Training progress is printed to the console, and checkpoints are saved under the `checkpoints` directory. If Weights & Biases is enabled, training status can also be monitored from the dashboard.
+- `--exp-name` specifies the experiment name.
+- `--overwrite` replaces existing checkpoints if the same experiment name already exists.
 
-To make more GPU memory available to JAX, set `XLA_PYTHON_CLIENT_MEM_FRACTION=0.9` before training. This allows JAX to use up to 90% of GPU memory.
+---
+
+### Training outputs
+
+During training:
+
+- Training logs are printed to the console.
+- Checkpoints are automatically saved in the `checkpoints/` directory.
+- If **Weights & Biases (W&B)** is enabled, training progress can also be monitored from the W&B dashboard.
+
+---
+
+### GPU memory recommendation
+
+We recommend setting
+
+```bash
+XLA_PYTHON_CLIENT_MEM_FRACTION=0.9
+```
+
+before training. This allows JAX to preallocate up to **90%** of the available GPU memory, which helps reduce memory fragmentation and improves training stability.
+
 
 ## Inference Example
 
