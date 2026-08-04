@@ -54,7 +54,7 @@ These commands configure the OpenPI runtime environment and install the current 
 
 ## Training
 
-### 1. Convert the dataset
+## 1. Convert the dataset
 
 Convert your dataset from **LeRobot v3** to **LeRobot v2**.
 
@@ -62,7 +62,7 @@ Reference repository: [`lerobot_conversion`](https://github.com/RainbowRobotics/
 
 ---
 
-### 2. Create a training configuration
+## 2. Create a training configuration
 
 Register your own config in `_CONFIGS =` inside [src/openpi/training/config.py](https://github.com/RainbowRobotics/rby1-openpi/blob/0b4a2ce3df170c8691c092690bcae9521b8c6275/src/openpi/training/config.py#L617) 
 
@@ -89,14 +89,57 @@ TrainConfig(
         freeze_filter=nnx.Nothing,
         seed=1000,
         ),
-    ),
+
 
 ```
 Replace `your_dataset_repo_id` with your converted LeRobot v2 dataset (e.g. rainbowrobotics/my_dataset_v2).
 
+
+### * If you use Single arm Training configuration
+
+  Expected action/state layout:
+  - dims 0:7: arm joints
+  - dim 7: gripper
+
+The single-arm data configuration is implemented as:
+
+```text
+LeRobotRBY1OneArmDataConfig
+```
+
+Example training configuration:
+
+```python
+TrainConfig(
+    name="pi05_rby1_one_arm_sample",
+    model=pi0_config.Pi0Config(
+        pi05=True,
+        action_horizon=40,
+    ),
+    data=LeRobotRBY1OneArmDataConfig(
+        repo_id="your_single_arm_dataset_repo_id",
+        base_config=DataConfig(prompt_from_task=True),
+        use_delta_joint_actions=True,
+    ),
+    weight_loader=weight_loaders.CheckpointWeightLoader(
+        "gs://openpi-assets/checkpoints/pi05_base/params"
+    ),
+    batch_size=32,
+    num_train_steps=50_000,
+)
+```
+
+Replace `your_single_arm_dataset_repo_id` with the Hugging Face repository ID of the dataset.
+
+
+
+
+
+
+
 ---
 
-### 3. Compute dataset normalization statistics
+## 3. Compute dataset normalization statistics
 
 Before training, compute the normalization statistics for your dataset:
 
@@ -106,7 +149,7 @@ uv run scripts/compute_norm_stats.py --config-name pi05_rby1_your_config_name
 
 ---
 
-### 4. Start training
+## 4. Start training
 
 ```bash
 XLA_PYTHON_CLIENT_MEM_FRACTION=0.9 \
@@ -172,79 +215,3 @@ https://github.com/RainbowRobotics/rby1-lerobot
 * `checkpoint-dir` must point to the actual trained checkpoint path.
 * The ZMQ server `host` and `port` must match the robot client configuration.
 
-
-
-
----
-# RB-Y1 Single-Arm Training
-
-RB-Y1 single-arm training supports a dataset collected using one arm and one RGB camera.
-
-### Dataset format
-
-The current single-arm configuration assumes the following LeRobot dataset structure:
-
-- Camera: `observation.images.front`
-- State: `observation.state`
-- Action: `action`
-- State dimension: 8
-- Action dimension: 8
-
-The state and action layout is:
-
-```text
-0:7  Arm joint positions
-7    Gripper position
-```
-
-
-The seven arm joint actions are converted to delta actions, while the gripper action remains absolute.
-
-
-Only the front camera is provided by the dataset.
-
-The policy maps the camera inputs as follows:
-
-```text
-base_0_rgb          Front camera image, mask=True
-left_wrist_0_rgb    Zero image, mask=False
-right_wrist_0_rgb   Zero image, mask=False
-```
-
-### Training configuration
-
-The single-arm data configuration is implemented as:
-
-```text
-LeRobotRBY1OneArmDataConfig
-```
-
-in:
-
-```text
-src/openpi/training/config.py
-```
-
-Example training configuration:
-
-```python
-TrainConfig(
-    name="pi05_rby1_one_arm_sample",
-    model=pi0_config.Pi0Config(
-        pi05=True,
-        action_horizon=40,
-    ),
-    data=LeRobotRBY1OneArmDataConfig(
-        repo_id="your_single_arm_dataset_repo_id",
-        base_config=DataConfig(prompt_from_task=True),
-        use_delta_joint_actions=True,
-    ),
-    weight_loader=weight_loaders.CheckpointWeightLoader(
-        "gs://openpi-assets/checkpoints/pi05_base/params"
-    ),
-    batch_size=32,
-    num_train_steps=50_000,
-)
-```
-
-Replace `your_single_arm_dataset_repo_id` with the Hugging Face repository ID of the dataset.
