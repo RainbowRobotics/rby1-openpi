@@ -21,6 +21,7 @@ import openpi.policies.aloha_policy as aloha_policy
 import openpi.policies.droid_policy as droid_policy
 import openpi.policies.libero_policy as libero_policy
 import openpi.policies.rby1_policy as rby1_policy
+import openpi.policies.rby1_policy_single_arm as rby1_policy_single_arm
 import openpi.shared.download as _download
 import openpi.shared.normalize as _normalize
 import openpi.training.droid_rlds_dataset as droid_rlds_dataset
@@ -277,6 +278,85 @@ class LeRobotRBY1DataConfig(DataConfigFactory):
             model_transforms=model_transforms,
             action_sequence_keys=self.action_sequence_keys,
         )
+
+#rby1 single arm + gripper
+@dataclasses.dataclass(frozen=True)
+class LeRobotRBY1OneArmDataConfig(DataConfigFactory):
+    """LeRobot data config for a single-arm, single-camera RB-Y1 dataset.
+
+    Expected dataset layout:
+    - observation.images.front
+    - observation.state: 8D (7 arm joints + 1 gripper)
+    - action: 8D (7 arm joints + 1 gripper)
+    """
+
+    use_delta_joint_actions: bool = True
+    default_prompt: str | None = None
+
+    repack_transforms: tyro.conf.Suppress[_transforms.Group] = dataclasses.field(
+        default=_transforms.Group(
+            inputs=[
+                _transforms.RepackTransform(
+                    {
+                        "observation/front_image": "observation.images.front",
+                        "observation/state": "observation.state",
+                        "actions": "action",
+                        "prompt": "prompt",
+                    }
+                )
+            ]
+        )
+    )
+
+    action_sequence_keys: Sequence[str] = ("action",)
+
+    @override
+    def create(
+        self,
+        assets_dirs: pathlib.Path,
+        model_config: _model.BaseModelConfig,
+    ) -> DataConfig:
+        data_transforms = _transforms.Group(
+            inputs=[
+                rby1_policy_single_arm.RBY1OneArmInputs()
+            ],
+            outputs=[
+                rby1_policy_single_arm.RBY1OneArmOutputs()
+            ],
+        )
+
+        if self.use_delta_joint_actions:
+            # 7 arm joints: delta
+            # 1 gripper: absolute
+            delta_action_mask = _transforms.make_bool_mask(7, -1)
+
+            data_transforms = data_transforms.push(
+                inputs=[
+                    _transforms.DeltaActions(delta_action_mask)
+                ],
+                outputs=[
+                    _transforms.AbsoluteActions(delta_action_mask)
+                ],
+            )
+
+        model_transforms = ModelTransformFactory(
+            default_prompt=self.default_prompt
+        )(model_config)
+
+        return dataclasses.replace(
+            self.create_base_config(assets_dirs, model_config),
+            repack_transforms=self.repack_transforms,
+            data_transforms=data_transforms,
+            model_transforms=model_transforms,
+            action_sequence_keys=self.action_sequence_keys,
+        )
+
+
+
+
+
+
+
 
 
 @dataclasses.dataclass(frozen=True)
@@ -646,6 +726,49 @@ _CONFIGS = [
             clip_gradient_norm=1.0,
         ),
     ),
+
+    # RBY1 Training (single arm + gripper)
+    TrainConfig(
+        name="pi05_rby1_one_arm_sample",
+        model=pi0_config.Pi0Config(
+            pi05=True,
+            action_horizon=40,
+        ),
+        data=LeRobotRBY1OneArmDataConfig(
+            repo_id="your_single_arm_dataset_repo_id",
+            base_config=DataConfig(prompt_from_task=True),
+            use_delta_joint_actions=True,
+        ),
+        weight_loader=weight_loaders.CheckpointWeightLoader(
+            "gs://openpi-assets/checkpoints/pi05_base/params"
+        ),
+        batch_size=32,
+        num_train_steps=50_000,
+        log_interval=100,
+        save_interval=5_000,
+        fsdp_devices=1,
+        freeze_filter=nnx.Nothing,
+        seed=1000,
+        lr_schedule=_optimizer.CosineDecaySchedule(
+            warmup_steps=10_000,
+            peak_lr=5e-5,
+            decay_steps=1_000_000,
+            decay_lr=5e-5,
+        ),
+        optimizer=_optimizer.AdamW(
+            b1=0.9,
+            b2=0.95,
+            eps=1e-8,
+            weight_decay=1e-10,
+            clip_gradient_norm=1.0,
+        ),
+    ),
+
+
+
+
+
+
     #
     # Inference Aloha configs.
     #

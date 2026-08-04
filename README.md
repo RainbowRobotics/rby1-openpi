@@ -171,3 +171,80 @@ https://github.com/RainbowRobotics/rby1-lerobot
 * Run `compute_norm_stats.py` before training to generate normalization statistics for the dataset.
 * `checkpoint-dir` must point to the actual trained checkpoint path.
 * The ZMQ server `host` and `port` must match the robot client configuration.
+
+
+
+
+---
+# RB-Y1 Single-Arm Training
+
+RB-Y1 single-arm training supports a dataset collected using one arm and one RGB camera.
+
+### Dataset format
+
+The current single-arm configuration assumes the following LeRobot dataset structure:
+
+- Camera: `observation.images.front`
+- State: `observation.state`
+- Action: `action`
+- State dimension: 8
+- Action dimension: 8
+
+The state and action layout is:
+
+```text
+0:7  Arm joint positions
+7    Gripper position
+```
+
+
+The seven arm joint actions are converted to delta actions, while the gripper action remains absolute.
+
+
+Only the front camera is provided by the dataset.
+
+The policy maps the camera inputs as follows:
+
+```text
+base_0_rgb          Front camera image, mask=True
+left_wrist_0_rgb    Zero image, mask=False
+right_wrist_0_rgb   Zero image, mask=False
+```
+
+### Training configuration
+
+The single-arm data configuration is implemented as:
+
+```text
+LeRobotRBY1OneArmDataConfig
+```
+
+in:
+
+```text
+src/openpi/training/config.py
+```
+
+Example training configuration:
+
+```python
+TrainConfig(
+    name="pi05_rby1_one_arm_sample",
+    model=pi0_config.Pi0Config(
+        pi05=True,
+        action_horizon=40,
+    ),
+    data=LeRobotRBY1OneArmDataConfig(
+        repo_id="your_single_arm_dataset_repo_id",
+        base_config=DataConfig(prompt_from_task=True),
+        use_delta_joint_actions=True,
+    ),
+    weight_loader=weight_loaders.CheckpointWeightLoader(
+        "gs://openpi-assets/checkpoints/pi05_base/params"
+    ),
+    batch_size=32,
+    num_train_steps=50_000,
+)
+```
+
+Replace `your_single_arm_dataset_repo_id` with the Hugging Face repository ID of the dataset.
