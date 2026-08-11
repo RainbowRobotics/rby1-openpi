@@ -2,13 +2,22 @@
 
 This repository contains RBY1 embodiment support for OpenPI.
 
-For the original OpenPI documentation, refer to the upstream README:
 
-https://github.com/Physical-Intelligence/openpi/blob/main/README.md
+For the original OpenPI documentation, refer to the upstream [OPENPI-README](https://github.com/Physical-Intelligence/openpi/blob/main/README.md).
+
 
 ## Overview
 
 This repository adds the components needed to use RBY1 as an embodiment in the OpenPI training and inference pipeline.
+
+## Key Files
+
+| Item | File |
+| ---- | ---- |
+| RBY1 policy implementation | `src/openpi/policies/rby1_policy.py` |
+| Data and training configuration | `src/openpi/training/config.py` |
+| ZMQ policy server | `src/openpi/serving/zmq_policy_server.py` |
+| 
 
 The RBY1 integration includes:
 
@@ -23,21 +32,12 @@ These additions let you use the standard OpenPI training and inference flow whil
 
 The RBY1 integration configures RBY1-specific data repacking, input/output transforms, and model settings so that RBY1 can be trained and served as an embodiment in OpenPI.
 
-## Key Files
 
-| Item | File |
-| ---- | ---- |
-| RBY1 policy implementation | `src/openpi/policies/rby1_policy.py` |
-| Data and training configuration | `src/openpi/training/config.py` |
-| ZMQ policy server | `src/openpi/serving/zmq_policy_server.py` |
 
 ## Dataset Preparation
 
-For instructions on creating RBY1 datasets, refer to the `rby1-lerobot` repository.
 
-```text
-https://github.com/RainbowRobotics/rby1-lerobot
-```
+For instructions on creating RBY1 datasets, refer to the [rby1-lerobot](https://github.com/RainbowRobotics/rby1-lerobot) repository.
 
 ## Installation
 
@@ -58,9 +58,10 @@ These commands configure the OpenPI runtime environment and install the current 
 
 Convert your dataset from **LeRobot v3** to **LeRobot v2**.
 
+
 Reference repository: [`lerobot_conversion`](https://github.com/RainbowRobotics/lerobot_conversion)
 
----
+
 
 ### 2. Create a training configuration
 
@@ -94,7 +95,13 @@ TrainConfig(
 ```
 Replace `your_dataset_repo_id` with your converted LeRobot v2 dataset (e.g. rainbowrobotics/my_dataset_v2).
 
----
+
+> [!NOTE]
+> - The `config-name` used for training and inference must be an RBY1-specific registered config.
+> - Run `compute_norm_stats.py` before training to generate normalization statistics for the dataset.
+> - `checkpoint-dir` must point to the actual trained checkpoint path.
+> - The ZMQ server `host` and `port` must match the robot client configuration.
+
 
 ### 3. Compute dataset normalization statistics
 
@@ -104,7 +111,7 @@ Before training, compute the normalization statistics for your dataset:
 uv run scripts/compute_norm_stats.py --config-name pi05_rby1_your_config_name
 ```
 
----
+
 
 ### 4. Start training
 
@@ -115,10 +122,21 @@ uv run scripts/train.py pi05_rby1_your_config_name \
   --overwrite
 ```
 
-#### Options
 
-- `--exp-name` specifies the experiment name.
-- `--overwrite` replaces existing checkpoints if the same experiment name already exists.
+#### GPU memory recommendation
+
+We recommend setting
+
+```bash
+XLA_PYTHON_CLIENT_MEM_FRACTION=0.9
+```
+
+before training. This allows JAX to preallocate up to **90%** of the available GPU memory, which helps reduce memory fragmentation and improves training stability.
+
+
+> [!NOTE] 
+> - `--exp-name` specifies the experiment name.
+> - `--overwrite` replaces existing checkpoints if the same experiment name already exists.
 
 ---
 
@@ -130,17 +148,6 @@ During training:
 - Checkpoints are automatically saved in the `checkpoints/` directory.
 - If **Weights & Biases (W&B)** is enabled, training progress can also be monitored from the W&B dashboard.
 
----
-
-### GPU memory recommendation
-
-We recommend setting
-
-```bash
-XLA_PYTHON_CLIENT_MEM_FRACTION=0.9
-```
-
-before training. This allows JAX to preallocate up to **90%** of the available GPU memory, which helps reduce memory fragmentation and improves training stability.
 
 
 ## Inference Example
@@ -159,15 +166,7 @@ uv run src/openpi/serving/zmq_policy_server.py \
 
 After that, configure the RBY1 robot client to connect to the same host and port. The client can then receive action chunks from the OpenPI model and use them for robot control.
 
-For the RBY1 LeRobot client, see:
 
-```text
-https://github.com/RainbowRobotics/rby1-lerobot
-```
+For the RBY1 LeRobot client, see [rby1-lerobot](https://github.com/RainbowRobotics/rby1-lerobot).
 
-## Notes
 
-* The `config-name` used for training and inference must be an RBY1-specific registered config.
-* Run `compute_norm_stats.py` before training to generate normalization statistics for the dataset.
-* `checkpoint-dir` must point to the actual trained checkpoint path.
-* The ZMQ server `host` and `port` must match the robot client configuration.
