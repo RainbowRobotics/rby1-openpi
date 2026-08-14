@@ -170,3 +170,22 @@ After that, configure the RBY1 robot client to connect to the same host and port
 For the RBY1 LeRobot client, see [rby1-lerobot](https://github.com/RainbowRobotics/rby1-lerobot).
 
 
+Install the client on the UPC:
+
+
+```bash
+
+git clone https://github.com/RainbowRobotics/rby1-lerobot.git
+cd lerobot-async-rby1
+pip install -e .
+
+```
+
+Start the robot client:
+
+```bash
+lerobot-robot-client \
+  --backend=pi05_zmq \
+  --robot.type=rby1 \
+  --server_address=<POLICY_SERVER_IP>:5555
+```
