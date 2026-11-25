@@ -20,6 +20,7 @@ import openpi.models.tokenizer as _tokenizer
 import openpi.policies.aloha_policy as aloha_policy
 import openpi.policies.droid_policy as droid_policy
 import openpi.policies.libero_policy as libero_policy
+import openpi.policies.rby1_ego_policy as rby1_ego_policy
 import openpi.policies.rby1_policy as rby1_policy
 import openpi.shared.download as _download
 import openpi.shared.normalize as _normalize
@@ -270,6 +271,50 @@ class LeRobotRBY1DataConfig(DataConfigFactory):
 
         model_transforms = ModelTransformFactory(default_prompt=self.default_prompt)(model_config)
 
+        return dataclasses.replace(
+            self.create_base_config(assets_dirs, model_config),
+            repack_transforms=self.repack_transforms,
+            data_transforms=data_transforms,
+            model_transforms=model_transforms,
+            action_sequence_keys=self.action_sequence_keys,
+        )
+
+
+@dataclasses.dataclass(frozen=True)
+class LeRobotRBY1EgoDataConfig(DataConfigFactory):
+    """RB-Y1 joint datasets re-expressed as ego-centric hand poses (rby1_ego_policy): state = the 2 measured gripper
+    openings, actions = 14-D hand-frame rows per arm, `anchored` (relative to the measured hand now) or `delta`
+    (each 30 fps step relative to the previous one). FK uses the RB-Y1 M v1.2 arm chain."""
+
+    ego_mode: str = "anchored"
+    # If provided, will be injected into the input data if the "prompt" key is not present.
+    default_prompt: str | None = None
+
+    repack_transforms: tyro.conf.Suppress[_transforms.Group] = dataclasses.field(
+        default=_transforms.Group(
+            inputs=[
+                _transforms.RepackTransform(
+                    {
+                        "observation/front_image": "observation.images.front",
+                        "observation/left_image": "observation.images.left",
+                        "observation/right_image": "observation.images.right",
+                        "observation/state": "observation.state",
+                        "actions": "action",
+                        "prompt": "prompt",
+                    }
+                )
+            ]
+        )
+    )
+    action_sequence_keys: Sequence[str] = ("action",)
+
+    @override
+    def create(self, assets_dirs: pathlib.Path, model_config: _model.BaseModelConfig) -> DataConfig:
+        data_transforms = _transforms.Group(
+            inputs=[rby1_ego_policy.RBY1EgoInputs(mode=self.ego_mode)],
+            outputs=[rby1_ego_policy.RBY1EgoOutputs()],
+        )
+        model_transforms = ModelTransformFactory(default_prompt=self.default_prompt)(model_config)
         return dataclasses.replace(
             self.create_base_config(assets_dirs, model_config),
             repack_transforms=self.repack_transforms,
@@ -646,6 +691,93 @@ _CONFIGS = [
             clip_gradient_norm=1.0,
         ),
     ),
+    # kjh (김지헌) JIMTOF_1023v2 baseline on smartm (4x A100 80GB PCIe): the recipe of pi05_rby1_flower_0626_20k_kjh
+    # (model, optimizer, LR shape with 3% warmup, EMA default, seed 42) with 40K steps and batch 32, so that 40K steps
+    # fit in about 21 h (1.90 s/step measured; batch 128 would take ~47 h).
+    # Data: v3.0 -> v2.1 with lerobot_conversion convert_v3_to_v2.py, then the 1-frame image lag of its -c copy cut
+    # removed by shifting parquet timestamps of the 998/2070 lagging episodes (fix_cut_shift.py, meta/cut_shift_fix.json).
+    # max_token_len 128: the longest possible prompt is 111 tokens (task + 16 three-digit state bins).
+    TrainConfig(
+        name="pi05_rby1_jimtof_1023v2_40k_kjh",
+        model=pi0_config.Pi0Config(
+            pi05=True,
+            action_horizon=40,
+            max_token_len=128,
+        ),
+        data=LeRobotRBY1DataConfig(
+            repo_id="rainbowrobotics/JIMTOF_1023v2",
+            base_config=DataConfig(prompt_from_task=True),
+            use_delta_joint_actions=True,
+        ),
+        weight_loader=weight_loaders.CheckpointWeightLoader("gs://openpi-assets/checkpoints/pi05_base/params"),
+        batch_size=32,
+        num_train_steps=40_000,
+        log_interval=50,
+        save_interval=5_000,
+        wandb_enabled=True,
+        num_workers=20,
+        fsdp_devices=1,
+        freeze_filter=nnx.Nothing,
+        seed=42,
+        lr_schedule=_optimizer.CosineDecaySchedule(
+            warmup_steps=1_200,
+            peak_lr=2.5e-5,
+            decay_steps=40_000,
+            decay_lr=2.5e-6,
+        ),
+        optimizer=_optimizer.AdamW(
+            b1=0.9,
+            b2=0.95,
+            eps=1e-8,
+            weight_decay=0.01,  # openpi is 1e-10
+            clip_gradient_norm=1.0,
+        ),
+    ),
+    # kjh JIMTOF_1023v2 ego-centric EE experiments: the recipe of pi05_rby1_jimtof_1023v2_40k_kjh (batch 32, 40K
+    # steps, LR, optimizer, EMA, seed, horizon 40, max_token_len 128) with only the data I/O changed
+    # (LeRobotRBY1EgoDataConfig): state = 2 measured gripper openings, actions = hand-frame rows per arm
+    # [p(3) m, rotvec(3), gripper cmd]. egodelta: each 30 fps step relative to the previous one; egoanchored:
+    # every row relative to the measured hand now (UMI-style relative trajectory). Trained on 2 GPUs each (global
+    # batch 32 as the baseline). The client turns the rows into hand targets (rby1_ego_policy.compose_targets).
+    *[
+        TrainConfig(
+            name=f"pi05_rby1_jimtof_1023v2_40k_ego{mode}_kjh",
+            model=pi0_config.Pi0Config(
+                pi05=True,
+                action_horizon=40,
+                max_token_len=128,
+            ),
+            data=LeRobotRBY1EgoDataConfig(
+                repo_id="rainbowrobotics/JIMTOF_1023v2",
+                base_config=DataConfig(prompt_from_task=True),
+                ego_mode=mode,
+            ),
+            weight_loader=weight_loaders.CheckpointWeightLoader("gs://openpi-assets/checkpoints/pi05_base/params"),
+            batch_size=32,
+            num_train_steps=40_000,
+            log_interval=50,
+            save_interval=5_000,
+            wandb_enabled=True,
+            num_workers=20,
+            fsdp_devices=1,
+            freeze_filter=nnx.Nothing,
+            seed=42,
+            lr_schedule=_optimizer.CosineDecaySchedule(
+                warmup_steps=1_200,
+                peak_lr=2.5e-5,
+                decay_steps=40_000,
+                decay_lr=2.5e-6,
+            ),
+            optimizer=_optimizer.AdamW(
+                b1=0.9,
+                b2=0.95,
+                eps=1e-8,
+                weight_decay=0.01,  # openpi is 1e-10
+                clip_gradient_norm=1.0,
+            ),
+        )
+        for mode in ("delta", "anchored")
+    ],
     #
     # Inference Aloha configs.
     #

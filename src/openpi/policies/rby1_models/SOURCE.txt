@@ -1,0 +1,2 @@
+rby1m_model_v1.2.urdf: copied from rby1-sdk 300a585 (v0.10.1) models/rby1m/urdf/model_v1.2.urdf.
+rby1_ego_fk_reference.json: link_torso_5 -> ee_<side> poses from rby1_sdk 0.10.1 dynamics for 10 random joint vectors per arm.
